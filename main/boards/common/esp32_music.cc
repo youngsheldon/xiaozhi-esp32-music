@@ -832,13 +832,13 @@ void Esp32Music::PlayAudioStream() {
             
             // 控制播放速度
             // 根据采样率和实际声道数计算延迟时间
-            int actual_samples = mp3_frame_info_.outputSamps / mp3_frame_info_.nChans;
-            int delay_ms = (actual_samples * 1000) / mp3_frame_info_.samprate / 2;
-            if (delay_ms > 0 && delay_ms < 100) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
-            } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));  // 默认20ms延迟
-            }
+            // int actual_samples = mp3_frame_info_.outputSamps / mp3_frame_info_.nChans;
+            // int delay_ms = (actual_samples * 1000) / mp3_frame_info_.samprate / 2;
+            // if (delay_ms > 0 && delay_ms < 100) {
+            //     std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+            // } else {
+            //     std::this_thread::sleep_for(std::chrono::milliseconds(20));  // 默认20ms延迟
+            // }
             
         } else {
             // 解码失败
