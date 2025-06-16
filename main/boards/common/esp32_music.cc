@@ -109,7 +109,7 @@ Esp32Music::~Esp32Music() {
         ESP_LOGI(TAG, "Waiting for download thread to finish (timeout: 5s)");
         auto start_time = std::chrono::steady_clock::now();
         
-        // 尝试优雅地等待线程结束
+        // 等待线程结束
         bool thread_finished = false;
         while (!thread_finished) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -337,7 +337,7 @@ bool Esp32Music::Download(const std::string& song_name) {
 }
 
 bool Esp32Music::Play() {
-    if (is_playing_) {
+    if (is_playing_.load()) {  // 使用atomic的load()
         ESP_LOGW(TAG, "Music is already playing");
         return true;
     }
@@ -347,31 +347,13 @@ bool Esp32Music::Play() {
         return false;
     }
     
-    is_playing_ = true;
-    
-    // 启动播放线程
+    // 清理之前的播放线程
     if (play_thread_.joinable()) {
         play_thread_.join();
     }
     
-    play_thread_ = std::thread([this]() {
-        ESP_LOGI(TAG, "Starting music playback");
-        
-        // 这里可以实现实际的音频播放逻辑
-        // 由于这是一个示例，我们只是模拟播放过程
-        auto codec = Board::GetInstance().GetAudioCodec();
-        if (codec && codec->output_enabled()) {
-            // 模拟播放3秒钟
-            for (int i = 0; i < 30 && is_playing_; ++i) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-        }
-        
-        is_playing_ = false;
-        ESP_LOGI(TAG, "Music playback finished");
-    });
-    
-    return true;
+    // 实际应调用流式播放接口
+    return StartStreaming(current_music_url_);
 }
 
 bool Esp32Music::Stop() {
@@ -625,6 +607,11 @@ void Esp32Music::DownloadAudioStream(const std::string& music_url) {
 void Esp32Music::PlayAudioStream() {
     ESP_LOGI(TAG, "Starting audio stream playback");
     
+    // 初始化时间跟踪变量
+    current_play_time_ms_ = 0;
+    last_frame_time_ms_ = 0;
+    total_frames_decoded_ = 0;
+    
     auto codec = Board::GetInstance().GetAudioCodec();
     if (!codec || !codec->output_enabled()) {
         ESP_LOGE(TAG, "Audio codec not available or not enabled");
@@ -637,6 +624,7 @@ void Esp32Music::PlayAudioStream() {
         is_playing_ = false;
         return;
     }
+    
     
     // 等待缓冲区有足够数据开始播放
     {
@@ -761,16 +749,28 @@ void Esp32Music::PlayAudioStream() {
         }
         
         // 解码MP3帧
-        int16_t pcm_buffer[2304];  // 最大1152 * 2通道
+        int16_t pcm_buffer[2304];
         int decode_result = MP3Decode(mp3_decoder_, &read_ptr, &bytes_left, pcm_buffer, 0);
         
         if (decode_result == 0) {
             // 解码成功，获取帧信息
             MP3GetLastFrameInfo(mp3_decoder_, &mp3_frame_info_);
+            total_frames_decoded_++;
             
-            ESP_LOGD(TAG, "MP3 frame decoded: bitrate=%d, samprate=%d, channels=%d, outputSamps=%d",
-                    mp3_frame_info_.bitrate, mp3_frame_info_.samprate, 
-                    mp3_frame_info_.nChans, mp3_frame_info_.outputSamps);
+            // 计算当前帧的持续时间(毫秒)
+            int frame_duration_ms = (mp3_frame_info_.outputSamps * 1000) / 
+                                  (mp3_frame_info_.samprate * mp3_frame_info_.nChans);
+            
+            // 更新当前播放时间
+            current_play_time_ms_ += frame_duration_ms;
+            
+            ESP_LOGD(TAG, "Frame %d: time=%lldms, duration=%dms, rate=%d, ch=%d", 
+                    total_frames_decoded_, current_play_time_ms_, frame_duration_ms,
+                    mp3_frame_info_.samprate, mp3_frame_info_.nChans);
+            
+            // 更新歌词显示
+            int buffer_latency_ms = 600; // 实测调整值
+            UpdateLyricDisplay(current_play_time_ms_ + buffer_latency_ms);
             
             // 将PCM数据发送到Application的音频解码队列
             if (mp3_frame_info_.outputSamps > 0) {
@@ -795,7 +795,7 @@ void Esp32Music::PlayAudioStream() {
                     
                     final_pcm_data = mono_buffer.data();
                     final_sample_count = mono_samples;
-                    
+
                     ESP_LOGD(TAG, "Converted stereo to mono: %d -> %d samples", 
                             stereo_samples, mono_samples);
                 } else if (mp3_frame_info_.nChans == 1) {
@@ -828,16 +828,6 @@ void Esp32Music::PlayAudioStream() {
                 if (total_played % (32 * 1024) == 0) {
                     ESP_LOGI(TAG, "Played %d bytes, buffer size: %d", total_played, buffer_size_);
                 }
-            }
-            
-            // 控制播放速度
-            // 根据采样率和实际声道数计算延迟时间
-            int actual_samples = mp3_frame_info_.outputSamps / mp3_frame_info_.nChans;
-            int delay_ms = (actual_samples * 1000) / mp3_frame_info_.samprate / 2;
-            if (delay_ms > 0 && delay_ms < 100) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
-            } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));  // 默认20ms延迟
             }
             
         } else {
@@ -1159,112 +1149,66 @@ bool Esp32Music::ParseLyrics(const std::string& lyric_content) {
 void Esp32Music::LyricDisplayThread() {
     ESP_LOGI(TAG, "Lyric display thread started");
     
-    // 首先下载歌词
     if (!DownloadLyrics(current_lyric_url_)) {
         ESP_LOGE(TAG, "Failed to download or parse lyrics");
         is_lyric_running_ = false;
         return;
     }
     
+    // 定期检查是否需要更新显示(频率可以降低)
     while (is_lyric_running_ && is_playing_) {
-        UpdateLyricDisplay();
-        
-        // 每500ms更新一次歌词显示
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     
     ESP_LOGI(TAG, "Lyric display thread finished");
 }
 
-// 更新歌词显示
-void Esp32Music::UpdateLyricDisplay() {
-    // 使用锁保护lyrics_数组访问
+void Esp32Music::UpdateLyricDisplay(int64_t current_time_ms) {
     std::lock_guard<std::mutex> lock(lyrics_mutex_);
     
     if (lyrics_.empty()) {
         return;
     }
     
-    // 获取当前播放时间（使用静态变量记录播放开始时间）
-    static auto play_start_time = std::chrono::steady_clock::now();
-    static bool time_initialized = false;
-    
-    // 如果播放刚开始，重新初始化时间
-    if (!time_initialized && is_playing_) {
-        play_start_time = std::chrono::steady_clock::now();
-        time_initialized = true;
-    }
-    
-    // 如果停止播放，重置时间初始化标志
-    if (!is_playing_) {
-        time_initialized = false;
-        return;
-    }
-    
-    auto current_time = std::chrono::steady_clock::now();
-    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        current_time - play_start_time).count();
-    
     // 查找当前应该显示的歌词
     int new_lyric_index = -1;
-    for (size_t i = 0; i < lyrics_.size(); i++) {
-        if (lyrics_[i].first <= elapsed_ms) {
+    
+    // 从当前歌词索引开始查找，提高效率
+    int start_index = (current_lyric_index_.load() >= 0) ? current_lyric_index_.load() : 0;
+    
+    // 正向查找：找到最后一个时间戳小于等于当前时间的歌词
+    for (int i = start_index; i < (int)lyrics_.size(); i++) {
+        if (lyrics_[i].first <= current_time_ms) {
             new_lyric_index = i;
         } else {
-            break;
+            break;  // 时间戳已超过当前时间
         }
     }
     
-    // 边界检查，确保new_lyric_index在有效范围内
-    if (new_lyric_index < 0 || new_lyric_index >= (int)lyrics_.size()) {
-        return;  // 无效索引，直接返回
+    // 如果没有找到(可能当前时间比第一句歌词还早)，显示空
+    if (new_lyric_index == -1) {
+        new_lyric_index = -1;
     }
     
     // 如果歌词索引发生变化，更新显示
     if (new_lyric_index != current_lyric_index_) {
         current_lyric_index_ = new_lyric_index;
         
-        // 确保索引有效
-        if (new_lyric_index < 0 || new_lyric_index >= (int)lyrics_.size()) {
-            ESP_LOGE(TAG, "Invalid lyric index: %d (max: %d)", new_lyric_index, (int)lyrics_.size() - 1);
-            return;
-        }
-        
         auto& board = Board::GetInstance();
         auto display = board.GetDisplay();
         if (display) {
-            try {
-                // 创建一个安全的副本，避免直接访问vector元素
-                std::string safe_lyric;
-                
-                // 双重检查索引有效性
-                if (new_lyric_index >= 0 && new_lyric_index < (int)lyrics_.size()) {
-                    safe_lyric = lyrics_[new_lyric_index].second;
-                    
-                    // 额外的安全检查
-                    safe_lyric.shrink_to_fit();  // 确保字符串容量匹配其大小
-                    
-                    // 使用固定值显示歌词
-                    if (!safe_lyric.empty()) {
-                        display->ShowNotification(safe_lyric.c_str(), 3000);
-                        
-                        // 限制日志输出长度
-                        std::string log_text = "(lyric content)";  // 避免直接输出歌词内容到日志
-                        ESP_LOGI(TAG, "Displaying lyric at time %lld ms", (long long)elapsed_ms);
-                    } else {
-                        // 空歌词
-                        display->ShowNotification("", 3000);
-                        ESP_LOGI(TAG, "Empty lyric at time %lld ms", (long long)elapsed_ms);
-                    }
-                } else {
-                    ESP_LOGE(TAG, "Lyric index out of range: %d (max: %d)", 
-                             new_lyric_index, lyrics_.empty() ? -1 : ((int)lyrics_.size() - 1));
-                }
-            } catch (const std::exception& e) {
-                ESP_LOGE(TAG, "Exception when displaying lyric: %s", e.what());
-            } catch (...) {
-                ESP_LOGE(TAG, "Unknown exception when displaying lyric");
+            std::string lyric_text;
+            
+            if (current_lyric_index_ >= 0 && current_lyric_index_ < (int)lyrics_.size()) {
+                lyric_text = lyrics_[current_lyric_index_].second;
             }
+            
+            // 显示歌词
+            display->SetChatMessage("lyric", lyric_text.c_str());
+            
+            ESP_LOGD(TAG, "Lyric update at %lldms: %s", 
+                    current_time_ms, 
+                    lyric_text.empty() ? "(no lyric)" : lyric_text.c_str());
         }
     }
 }

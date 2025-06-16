@@ -1,3 +1,4 @@
+
 #ifndef ESP32_MUSIC_H
 #define ESP32_MUSIC_H
 
@@ -43,7 +44,10 @@ private:
     std::atomic<bool> is_downloading_;
     std::thread play_thread_;
     std::thread download_thread_;
-    
+    int64_t current_play_time_ms_;  // 当前播放时间(毫秒)
+    int64_t last_frame_time_ms_;    // 上一帧的时间戳
+    int total_frames_decoded_;      // 已解码的帧数
+
     // 音频缓冲区
     std::queue<AudioChunk> audio_buffer_;
     std::mutex buffer_mutex_;
@@ -68,7 +72,7 @@ private:
     bool DownloadLyrics(const std::string& lyric_url);
     bool ParseLyrics(const std::string& lyric_content);
     void LyricDisplayThread();
-    void UpdateLyricDisplay();
+    void UpdateLyricDisplay(int64_t current_time_ms);
 
 public:
     Esp32Music();
