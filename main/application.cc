@@ -1138,7 +1138,7 @@ void Application::AddAudioData(AudioStreamPacket&& packet) {
                         }
                     }
                     
-                    ESP_LOGI(TAG, "Downsampled %d -> %d samples (ratio: %.3f)", 
+                    ESP_LOGD(TAG, "Downsampled %d -> %d samples (ratio: %.3f)", 
                             pcm_data.size(), resampled.size(), ratio);
                             
                 } else {
