@@ -30,7 +30,7 @@ bool EspHttp::Open(const std::string& method, const std::string& url) {
     config.crt_bundle_attach = esp_crt_bundle_attach;
     config.timeout_ms = timeout_ms_;
 
-    ESP_LOGI(TAG, "Opening HTTP connection to %s", url.c_str());
+    ESP_LOGD(TAG, "Opening HTTP connection to %s", url.c_str());
 
     assert(client_ == nullptr);
     client_ = esp_http_client_init(&config);

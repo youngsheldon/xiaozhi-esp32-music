@@ -581,7 +581,7 @@ void Esp32Music::DownloadAudioStream(const std::string& music_url) {
                 // 通知播放线程有新数据
                 buffer_cv_.notify_one();
                 
-                if (total_downloaded % (64 * 1024) == 0) {  // 每64KB打印一次进度
+                if (total_downloaded % (256 * 1024) == 0) {  // 每256KB打印一次进度
                     ESP_LOGI(TAG, "Downloaded %d bytes, buffer size: %d", total_downloaded, buffer_size_);
                 }
             } else {
@@ -666,7 +666,7 @@ void Esp32Music::PlayAudioStream() {
             vTaskDelay(pdMS_TO_TICKS(300));
             continue;
         } else if (current_state != kDeviceStateIdle) { // 不是待机状态，就一直卡在这里，不让播放音乐
-            ESP_LOGW(TAG, "Device state is %d, pausing music playback", current_state);
+            ESP_LOGD(TAG, "Device state is %d, pausing music playback", current_state);
             // 如果不是空闲状态，暂停播放
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
@@ -825,7 +825,7 @@ void Esp32Music::PlayAudioStream() {
                 total_played += pcm_size_bytes;
                 
                 // 打印播放进度
-                if (total_played % (32 * 1024) == 0) {
+                if (total_played % (128 * 1024) == 0) {
                     ESP_LOGI(TAG, "Played %d bytes, buffer size: %d", total_played, buffer_size_);
                 }
             }
@@ -944,7 +944,7 @@ bool Esp32Music::DownloadLyrics(const std::string& lyric_url) {
         http->SetHeader("Accept", "text/plain");
         
         // 打开GET连接
-        ESP_LOGI(TAG, "Opening HTTP connection to %s", current_url.c_str());
+        ESP_LOGI(TAG, "硅灵造物 qq交流群:826072986 联系方式wx:LambYangHan");
         if (!http->Open("GET", current_url)) {
             ESP_LOGE(TAG, "Failed to open HTTP connection for lyrics");
             delete http;
@@ -987,16 +987,16 @@ bool Esp32Music::DownloadLyrics(const std::string& lyric_url) {
         
         while (true) {
             bytes_read = http->Read(buffer, sizeof(buffer) - 1);
-            ESP_LOGD(TAG, "Lyric HTTP read returned %d bytes", bytes_read);
+            // ESP_LOGD(TAG, "Lyric HTTP read returned %d bytes", bytes_read); // 注释掉以减少日志输出
             
             if (bytes_read > 0) {
                 buffer[bytes_read] = '\0';
                 lyric_content += buffer;
                 total_read += bytes_read;
                 
-                // 定期打印下载进度
+                // 定期打印下载进度 - 改为DEBUG级别减少输出
                 if (total_read % 4096 == 0) {
-                    ESP_LOGI(TAG, "Downloaded %d bytes so far", total_read);
+                    ESP_LOGD(TAG, "Downloaded %d bytes so far", total_read);
                 }
             } else if (bytes_read == 0) {
                 // 正常结束，没有更多数据

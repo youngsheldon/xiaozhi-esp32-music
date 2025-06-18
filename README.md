@@ -1,4 +1,4 @@
-# An MCP-based Chatbot | 一个基于 MCP 的聊天机器人
+# 小智 AI 女友：可定制的聊天机器人 | Xiaozhi AI: Customizable Chat Bot
 
 （中文 | [English](README_en.md) | [日本語](README_ja.md)）
 
@@ -16,6 +16,28 @@
 
 如果你有任何想法或建议，请随时提出 Issues 或加入 QQ 群：826072986
 
+### 💡 AI 女友角色定制
+
+小智 AI 支持丰富的角色配置功能，您可以轻松打造属于自己的专属 AI 伴侣：
+
+![AI女友角色配置界面](docs/v1/role-config-interface.jpg)
+
+#### 🎭 多样化角色模板
+- **台湾女友** - 温柔体贴的台湾女生性格
+- **土豆子** - 活泼可爱的邻家女孩风格  
+- **English Tutor** - 专业耐心的英语老师
+- **好奇小男孩** - 天真烂漫的童趣角色
+- **汪汪队队长** - 勇敢正义的卡通角色
+
+#### 🎨 个性化配置选项
+- **助手昵称**：自定义您的 AI 伴侣名称（如：小智）
+- **对话语言**：支持普通话、英语、日语等多种语言
+- **角色音色**：清澈小何等多种音色选择
+- **角色介绍**：详细设定角色背景和性格特点
+
+#### ✨ 智能语音交互
+收到相关音乐的需求时，小智会使用 `self.music.play_song` 工具，同时禁止使用 `search_music` 功能，确保音乐播放的流畅体验。
+
 ### 基于 MCP 控制万物
 
 小智 AI 聊天机器人作为一个语音交互入口，利用 Qwen / DeepSeek 等大模型的 AI 能力，通过 MCP 协议实现多端控制。
@@ -24,18 +46,21 @@
 
 ### 已实现功能
 
-- Wi-Fi / ML307 Cat.1 4G
-- 离线语音唤醒 [ESP-SR](https://github.com/espressif/esp-sr)
-- 支持两种通信协议（[Websocket](docs/websocket.md) 或 MQTT+UDP）
-- 采用 OPUS 音频编解码
-- 基于流式 ASR + LLM + TTS 架构的语音交互
-- 声纹识别，识别当前说话人的身份 [3D Speaker](https://github.com/modelscope/3D-Speaker)
-- OLED / LCD 显示屏，支持表情显示
-- 电量显示与电源管理
-- 支持多语言（中文、英文、日文）
-- 支持 ESP32-C3、ESP32-S3、ESP32-P4 芯片平台
-- 通过设备端 MCP 实现设备控制（音量、灯光、电机、GPIO 等）
-- 通过云端 MCP 扩展大模型能力（智能家居控制、PC桌面操作、知识搜索、邮件收发等）
+- 🎭 **丰富的角色定制系统**：支持台湾女友、土豆子、English Tutor 等多种预设角色
+- 🎨 **个性化配置**：自定义助手昵称、对话语言、角色音色和性格介绍
+- 🎵 **智能音乐控制**：支持 `self.music.play_song` 工具进行音乐播放控制
+- 📡 Wi-Fi / ML307 Cat.1 4G 网络连接
+- 🗣️ 离线语音唤醒 [ESP-SR](https://github.com/espressif/esp-sr)
+- 🔗 支持两种通信协议（[Websocket](docs/websocket.md) 或 MQTT+UDP）
+- 🎧 采用 OPUS 音频编解码
+- 🤖 基于流式 ASR + LLM + TTS 架构的语音交互
+- 👤 声纹识别，识别当前说话人的身份 [3D Speaker](https://github.com/modelscope/3D-Speaker)
+- 📺 OLED / LCD 显示屏，支持表情显示
+- 🔋 电量显示与电源管理
+- 🌍 支持多语言（中文、英文、日文）
+- 💻 支持 ESP32-C3、ESP32-S3、ESP32-P4 芯片平台
+- 🏠 通过设备端 MCP 实现设备控制（音量、灯光、电机、GPIO 等）
+- ☁️ 通过云端 MCP 扩展大模型能力（智能家居控制、PC桌面操作、知识搜索、邮件收发等）
 
 ## 硬件
 
@@ -130,6 +155,18 @@
 ## 大模型配置
 
 如果你已经拥有一个的小智 AI 聊天机器人设备，并且已接入官方服务器，可以登录 [xiaozhi.me](https://xiaozhi.me) 控制台进行配置。
+
+### 🎭 角色配置指南
+
+在 [xiaozhi.me](https://xiaozhi.me) 控制台中，您可以：
+
+1. **选择角色模板**：从台湾女友、土豆子、English Tutor、好奇小男孩、汪汪队队长等预设角色中选择
+2. **设置助手昵称**：为您的 AI 伴侣起一个专属的名字（默认：小智）
+3. **配置对话语言**：支持普通话、英语、日语等多种语言
+4. **选择角色音色**：清澈小何等多种音色可供选择
+5. **自定义角色介绍**：详细描述角色的性格特点和背景设定
+
+💡 **特别功能**：收到音乐相关需求时，小智会优先使用 `self.music.play_song` 工具，确保音乐播放体验的流畅性。
 
 👉 [后台操作视频教程（旧版界面）](https://www.bilibili.com/video/BV1jUCUY2EKM/)
 
