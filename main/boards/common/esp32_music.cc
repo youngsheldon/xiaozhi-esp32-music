@@ -199,7 +199,7 @@ Esp32Music::~Esp32Music() {
 }
 
 bool Esp32Music::Download(const std::string& song_name) {
-    ESP_LOGI(TAG, "硅灵造物 qq交流群:826072986 联系方式wx:LambYangHan");
+    ESP_LOGI(TAG, "小智开源音乐固件qq交流群:826072986");
     ESP_LOGI(TAG, "Starting to get music details for: %s", song_name.c_str());
     
     // 清空之前的下载数据
@@ -278,7 +278,7 @@ bool Esp32Music::Download(const std::string& song_name) {
                     current_music_url_ = base_url + audio_path;
                 }
                 
-                ESP_LOGI(TAG, "硅灵造物 qq交流群:826072986 联系方式wx:LambYangHan");
+                ESP_LOGI(TAG, "小智开源音乐固件qq交流群:826072986");
                 ESP_LOGI(TAG, "Starting streaming playback for: %s", song_name.c_str());
                 song_name_displayed_ = false;  // 重置歌名显示标志
                 StartStreaming(current_music_url_);
@@ -633,7 +633,7 @@ void Esp32Music::PlayAudioStream() {
         });
     }
     
-    ESP_LOGI(TAG, "硅灵造物 qq交流群:826072986 联系方式wx:LambYangHan");
+    ESP_LOGI(TAG, "小智开源音乐固件qq交流群:826072986");
     ESP_LOGI(TAG, "Starting playback with buffer size: %d", buffer_size_);
     
     // 启用音频输出
@@ -994,7 +994,7 @@ bool Esp32Music::DownloadLyrics(const std::string& lyric_url) {
         http->SetHeader("Accept", "text/plain");
         
         // 打开GET连接
-        ESP_LOGI(TAG, "硅灵造物 qq交流群:826072986 联系方式wx:LambYangHan");
+        ESP_LOGI(TAG, "小智开源音乐固件qq交流群:826072986");
         if (!http->Open("GET", current_url)) {
             ESP_LOGE(TAG, "Failed to open HTTP connection for lyrics");
             delete http;
