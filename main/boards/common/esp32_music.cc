@@ -663,10 +663,6 @@ void Esp32Music::PlayAudioStream() {
     ESP_LOGI(TAG, "小智开源音乐固件qq交流群:826072986");
     ESP_LOGI(TAG, "Starting playback with buffer size: %d", buffer_size_);
     
-    // 启用音频输出
-    codec->EnableOutput(true);
-    ESP_LOGI(TAG, "Audio output enabled for music playback");
-    
     size_t total_played = 0;
     uint8_t* mp3_input_buffer = nullptr;
     int bytes_left = 0;
