@@ -367,6 +367,20 @@ bool Esp32Music::Stop() {
     is_downloading_ = false;
     is_playing_ = false;
     
+    // 重置采样率到原始值
+    auto& board = Board::GetInstance();
+    auto codec = board.GetAudioCodec();
+    if (codec && codec->original_output_sample_rate() > 0 && 
+        codec->output_sample_rate() != codec->original_output_sample_rate()) {
+        ESP_LOGI(TAG, "音乐停止：将采样率从 %d Hz 重置到原始值 %d Hz", 
+                codec->output_sample_rate(), codec->original_output_sample_rate());
+        if (codec->SetOutputSampleRate(-1)) {  // -1 表示重置到原始值
+            ESP_LOGI(TAG, "成功重置采样率到原始值: %d Hz", codec->output_sample_rate());
+        } else {
+            ESP_LOGW(TAG, "无法重置采样率到原始值");
+        }
+    }
+    
     // 通知所有等待的线程
     {
         std::lock_guard<std::mutex> lock(buffer_mutex_);
@@ -464,6 +478,19 @@ bool Esp32Music::StopStreaming() {
     if (display) {
         display->SetMusicInfo("");  // 清空歌名显示
         ESP_LOGI(TAG, "Cleared song name display");
+    }
+    
+    // 重置采样率到原始值
+    auto codec = board.GetAudioCodec();
+    if (codec && codec->original_output_sample_rate() > 0 && 
+        codec->output_sample_rate() != codec->original_output_sample_rate()) {
+        ESP_LOGI(TAG, "音乐停止：将采样率从 %d Hz 重置到原始值 %d Hz", 
+                codec->output_sample_rate(), codec->original_output_sample_rate());
+        if (codec->SetOutputSampleRate(-1)) {  // -1 表示重置到原始值
+            ESP_LOGI(TAG, "成功重置采样率到原始值: %d Hz", codec->output_sample_rate());
+        } else {
+            ESP_LOGW(TAG, "无法重置采样率到原始值");
+        }
     }
     
     // 通知所有等待的线程
