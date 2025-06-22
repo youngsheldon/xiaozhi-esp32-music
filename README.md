@@ -41,6 +41,9 @@
         // InitializeCamera();
 ```
 
+#### 为什么esp32c3的小智播放不了？
+暂不支持 
+
 ### 基于 MCP 控制万物
 
 小智 AI 聊天机器人作为一个语音交互入口，利用 Qwen / DeepSeek 等大模型的 AI 能力，通过 MCP 协议实现多端控制。
