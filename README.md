@@ -1,42 +1,45 @@
-# 小智 AI 女友：可定制的聊天机器人 | Xiaozhi AI: Customizable Chat Bot
+# 小智开源音乐固件
 
 （中文 | [English](README_en.md) | [日本語](README_ja.md)）
 
 ## 视频
 
-👉 [人类：给 AI 装摄像头 vs AI：当场发现主人三天没洗头【bilibili】](https://www.bilibili.com/video/BV1bpjgzKEhd/)
+👉 [【开源】虾哥ai小智机器音乐播放器纯固件带歌词显示](https://www.bilibili.com/video/BV19oM4zqEiz)
 
-👉 [手工打造你的 AI 女友，新手入门教程【bilibili】](https://www.bilibili.com/video/BV1XnmFYLEJN/)
+👉 [【开源】虾哥小智音乐播放器纯固件](https://www.bilibili.com/video/BV1RqMEzEEp1)
 
 ## 介绍
 
-这是一个由虾哥开源的 ESP32 项目，以 MIT 许可证发布，允许任何人免费使用，或用于商业用途。
+这是一个由虾哥开源的[ESP32项目](https://github.com/78/xiaozhi-esp32)，以 MIT 许可证发布，允许任何人免费使用，或用于商业用途。
 
-我们希望通过这个项目，能够帮助大家了解 AI 硬件开发，将当下飞速发展的大语言模型应用到实际的硬件设备中。
+我们希望通过这个项目，让大家的小智都能播放歌曲。
 
 如果你有任何想法或建议，请随时提出 Issues 或加入 QQ 群：826072986
 
-### 💡 AI 音乐固件角色定制
+项目主要贡献者：空白泡泡糖果（B站UP），硅灵造物科技（B站UP）
 
-小智 AI 支持丰富的角色配置功能，您可以轻松打造属于自己的专属 AI 伴侣：
+音乐服务器提供者（为爱发电）：蔓延科技
 
-![AI音乐固件角色配置界面](docs/music.png)
+### 💡注意事项
 
-#### 🎭 多样化角色模板
-- **台湾女友** - 温柔体贴的台湾女生性格
-- **土豆子** - 活泼可爱的邻家女孩风格  
-- **English Tutor** - 专业耐心的英语老师
-- **好奇小男孩** - 天真烂漫的童趣角色
-- **汪汪队队长** - 勇敢正义的卡通角色
+#### 如果小智说找不到歌曲怎么办？
+进入[小智后台](https://xiaozhi.me/)，找到对应设备，修改角色配置
+- 选择 DeepSeekV3 大语言模型
+- 在人物介绍中填入
+  - 收到相关音乐的需求时，小智会使用 MPC tool `self.music.play_song` 工具，同时禁止使用 `search_music` 功能。
 
-#### 🎨 个性化配置选项
-- **助手昵称**：自定义您的 AI 伴侣名称（如：小智）
-- **对话语言**：支持普通话、英语、日语等多种语言
-- **角色音色**：清澈小何等多种音色选择
-- **角色介绍**：详细设定角色背景和性格特点
 
-#### ✨ 智能语音交互
-收到相关音乐的需求时，小智会使用 `self.music.play_song` 工具，同时禁止使用 `search_music` 功能，确保音乐播放的流畅体验。
+#### 如果立创实战派esp32s3等开发板烧录后爆内存了怎么办？（待修复）
+临时解决方案，打开 main\boards\lichuang-dev\lichuang_dev_board.cc 开发板文件，注释掉一些不用的功能
+```c++
+    LichuangDevBoard() : boot_button_(BOOT_BUTTON_GPIO) {
+        InitializeI2c();
+        InitializeSpi();
+        InitializeSt7789Display();
+        // InitializeTouch();
+        InitializeButtons();
+        // InitializeCamera();
+```
 
 ### 基于 MCP 控制万物
 
@@ -185,13 +188,3 @@
 - [100askTeam/xiaozhi-linux](http://github.com/100askTeam/xiaozhi-linux) 百问科技提供的 Linux 客户端
 - [78/xiaozhi-sf32](https://github.com/78/xiaozhi-sf32) 思澈科技的蓝牙芯片固件
 - [QuecPython/solution-xiaozhiAI](https://github.com/QuecPython/solution-xiaozhiAI) 移远提供的 QuecPython 固件
-
-## Star History
-
-<a href="https://star-history.com/#78/xiaozhi-esp32&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date" />
- </picture>
-</a>
