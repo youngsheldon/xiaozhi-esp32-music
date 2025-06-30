@@ -235,8 +235,36 @@ bool Esp32Music::Download(const std::string& song_name) {
         return false;
     }
     
-    // 读取响应数据
-    last_downloaded_data_ = http->ReadAll();
+    // 分块读取响应数据
+    last_downloaded_data_.clear();
+    char buffer[1024];
+    int bytes_read;
+    int total_read = 0;
+    
+    while (true) {
+        bytes_read = http->Read(buffer, sizeof(buffer) - 1);
+        
+        if (bytes_read > 0) {
+            buffer[bytes_read] = '\0';
+            last_downloaded_data_ += buffer;
+            total_read += bytes_read;
+        } else if (bytes_read == 0) {
+            // 正常结束，没有更多数据
+            ESP_LOGD(TAG, "API response download completed, total bytes: %d", total_read);
+            break;
+        } else {
+            // bytes_read < 0，读取错误
+            // 如果已经读取到了一些数据，则认为下载成功
+            if (!last_downloaded_data_.empty()) {
+                ESP_LOGW(TAG, "HTTP read returned %d, but we have data (%d bytes), continuing", bytes_read, last_downloaded_data_.length());
+                break;
+            } else {
+                ESP_LOGE(TAG, "Failed to read API response data: error code %d", bytes_read);
+                http->Close();
+                return false;
+            }
+        }
+    }
     http->Close();
     
     ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %d", status_code, last_downloaded_data_.length());
