@@ -29,20 +29,11 @@
   - 收到相关音乐的需求时，小智会使用 MPC tool `self.music.play_song` 工具，同时禁止使用 `search_music` 功能。
 
 
-#### 如果立创实战派esp32s3等开发板烧录后爆内存了怎么办？（待修复）
-临时解决方案，打开 main\boards\lichuang-dev\lichuang_dev_board.cc 开发板文件，注释掉一些不用的功能
-```c++
-    LichuangDevBoard() : boot_button_(BOOT_BUTTON_GPIO) {
-        InitializeI2c();
-        InitializeSpi();
-        InitializeSt7789Display();
-        // InitializeTouch();
-        InitializeButtons();
-        // InitializeCamera();
-```
+#### 暂不支持的开发板
+- 立创实战派ESP32S3
+- OTTO-Robot
+- ESP32C3芯片的开发板
 
-#### 为什么esp32c3的小智播放不了？
-暂不支持 
 
 ### 基于 MCP 控制万物
 
