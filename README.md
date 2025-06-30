@@ -26,12 +26,26 @@
 进入[小智后台](https://xiaozhi.me/)，找到对应设备，修改角色配置
 - 选择 DeepSeekV3 大语言模型
 - 在人物介绍中填入
-  - 收到相关音乐的需求时，小智会使用 MPC tool `self.music.play_song` 工具，同时禁止使用 `search_music` 功能。
+  - 收到音乐相关的需求时，只使用 MPC tool `self.music.play_song` 工具，同时禁止使用 `search_music` 功能。
 
 
 #### 暂不支持的开发板
 - OTTO-Robot
 - ESP32C3芯片的开发板
+
+### 项目改动范围
+
+#### 新增
+- main\boards\common\esp32_music.cc
+- main\boards\common\esp32_music.h
+
+#### 修改
+- main\mcp_server.cc
+- main\boards\common\board.cc
+- main\boards\common\board.h
+- main\application.cc
+- main\application.h
+
 
 
 ### 基于 MCP 控制万物
