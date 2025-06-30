@@ -77,7 +77,7 @@ void Display::ShowNotification(const std::string &notification, int duration_ms)
 
 void Display::ShowNotification(const char* notification, int duration_ms) {
     DisplayLockGuard lock(this);
-    if (notification_label_ == nullptr || notification == nullptr) {
+    if (notification_label_ == nullptr) {
         return;
     }
     lv_label_set_text(notification_label_, notification);
