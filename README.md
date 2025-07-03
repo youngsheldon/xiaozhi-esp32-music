@@ -22,15 +22,111 @@
 
 ### 💡注意事项
 
-#### 如果小智说找不到歌曲怎么办？
+#### 1. 如果小智说找不到歌曲怎么办？
 进入[小智后台](https://xiaozhi.me/)，找到对应设备，修改角色配置
 - 选择 DeepSeekV3 大语言模型
 - 在人物介绍中填入
   - 收到音乐相关的需求时，只使用 MPC tool `self.music.play_song` 工具，同时禁止使用 `search_music` 功能。
 
+#### 2. 歌曲播放时唤醒词不生效怎么办？
+把`main\application.cc`文件的`AddAudioData`方法改成如下代码
+```
+void Application::AddAudioData(AudioStreamPacket&& packet) {
+    auto codec = Board::GetInstance().GetAudioCodec();
+    if (device_state_ == kDeviceStateIdle && codec->output_enabled()) {
+        // packet.payload包含的是原始PCM数据（int16_t）
+        if (packet.payload.size() >= 2) {
+            size_t num_samples = packet.payload.size() / sizeof(int16_t);
+            std::vector<int16_t> pcm_data(num_samples);
+            memcpy(pcm_data.data(), packet.payload.data(), packet.payload.size());
+            
+            // 检查采样率是否匹配，如果不匹配则进行简单重采样
+            if (packet.sample_rate != codec->output_sample_rate()) {
+                // ESP_LOGI(TAG, "Resampling music audio from %d to %d Hz", 
+                //         packet.sample_rate, codec->output_sample_rate());
+                
+                // 验证采样率参数
+                if (packet.sample_rate <= 0 || codec->output_sample_rate() <= 0) {
+                    ESP_LOGE(TAG, "Invalid sample rates: %d -> %d", 
+                            packet.sample_rate, codec->output_sample_rate());
+                    return;
+                }
+                
+                std::vector<int16_t> resampled;
+                
+                // 使用浮点数计算精确的重采样比率Add commentMore actions
+                float ratio = static_cast<float>(packet.sample_rate) / codec->output_sample_rate();
+                
+                if (packet.sample_rate > codec->output_sample_rate()) {
+                    // 降采样：按精确比率跳跃采样
+                    size_t expected_size = static_cast<size_t>(pcm_data.size() / ratio + 0.5f);
+                    resampled.reserve(expected_size);
+                    
+                    for (float i = 0; i < pcm_data.size(); i += ratio) {
+                        size_t index = static_cast<size_t>(i + 0.5f);  // 四舍五入
+                        if (index < pcm_data.size()) {
+                            resampled.push_back(pcm_data[index]);
+                        }
+                    }
+                    
+                    ESP_LOGD(TAG, "Downsampled %d -> %d samples (ratio: %.3f)", 
+                            pcm_data.size(), resampled.size(), ratio);
+                            
+                } else {
+                    // 上采样：线性插值
+                    float upsample_ratio = codec->output_sample_rate() / static_cast<float>(packet.sample_rate);
+                    size_t expected_size = static_cast<size_t>(pcm_data.size() * upsample_ratio + 0.5f);
+                    resampled.reserve(expected_size);
+                    
+                    for (size_t i = 0; i < pcm_data.size(); ++i) {
+                        // 添加原始样本
+                        resampled.push_back(pcm_data[i]);
+                        
+                        // 计算需要插值的样本数
+                        int interpolation_count = static_cast<int>(upsample_ratio) - 1;
+                        if (interpolation_count > 0 && i + 1 < pcm_data.size()) {
+                            int16_t current = pcm_data[i];
+                            int16_t next = pcm_data[i + 1];
+                            for (int j = 1; j <= interpolation_count; ++j) {
+                                float t = static_cast<float>(j) / (interpolation_count + 1);
+                                int16_t interpolated = static_cast<int16_t>(current + (next - current) * t);
+                                resampled.push_back(interpolated);
+                            }
+                        } else if (interpolation_count > 0) {
+                            // 最后一个样本，直接重复
+                            for (int j = 1; j <= interpolation_count; ++j) {
+                                resampled.push_back(pcm_data[i]);
+                            }
+                        }
+                    }
+                    
+                    ESP_LOGI(TAG, "Upsampled %d -> %d samples (ratio: %.2f)", 
+                            pcm_data.size(), resampled.size(), upsample_ratio);
+                }
+                
+                pcm_data = std::move(resampled);
+            }
+            
+            // 确保音频输出已启用
+            if (!codec->output_enabled()) {
+                codec->EnableOutput(true);
+            }
+            
+            // 发送PCM数据到音频编解码器
+            codec->OutputData(pcm_data);
+            
+            // 更新最后输出时间，防止OnAudioOutput自动禁用音频
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                last_output_time_ = std::chrono::steady_clock::now();
+            }
+        }
+    }
+}
+```
 
-#### 暂不支持的开发板
-- OTTO-Robot
+
+#### 3. 暂不支持的开发板
 - ESP32C3芯片的开发板
 
 ### 项目改动范围
