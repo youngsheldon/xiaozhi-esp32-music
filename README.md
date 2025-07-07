@@ -141,6 +141,9 @@ void Application::AddAudioData(AudioStreamPacket&& packet) {
 - main\boards\common\board.h
 - main\application.cc
 - main\application.h
+- main\display\display.cc
+- main\display\display.h
+- main\idf_component.yml
 
 
 
