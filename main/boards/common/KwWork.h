@@ -259,7 +259,7 @@ public:
     return final(result);
   }
 
-  static string getUrl(long id) {
+  static string getUrl(const string & id) {
     stringstream ss;
     ss << "user=583781442410&prod=kwplayerhd_ar_5.1.0.0&corp=kuwo&vipver=5.1.0."
           "0&source=kwplayerhd_ar_5.1.0.0_B_jiakong_vh.apk&packageName=cn.kuwo."

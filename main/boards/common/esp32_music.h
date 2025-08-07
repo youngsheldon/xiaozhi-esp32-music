@@ -77,6 +77,8 @@ private:
     // ID3标签处理
     size_t SkipId3Tag(uint8_t* data, size_t size);
 
+    std::string getSongPlayUrl(const std::string& req);
+
 public:
     Esp32Music();
     ~Esp32Music();
