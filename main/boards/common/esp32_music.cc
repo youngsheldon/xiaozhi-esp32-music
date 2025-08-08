@@ -298,7 +298,8 @@ bool Esp32Music::Download2(const std::string &song_name)
         }
         
         ESP_LOGI(TAG, "歌曲ID: %s", targetId->valuestring);
-        string url = KwWork::getUrl(string(targetId->valuestring));
+        string songId = string(targetId->valuestring);
+        string url = KwWork::getUrl(songId);
         ESP_LOGI(TAG, "url = %s", url.c_str());
         cJSON_Delete(response_json);
         // 打开GET连接
@@ -311,6 +312,32 @@ bool Esp32Music::Download2(const std::string &song_name)
         ESP_LOGI(TAG, "songUrl = %s", current_music_url_.c_str());
         ESP_LOGI(TAG, "Starting streaming playback for: %s", song_name.c_str());
         StartStreaming(current_music_url_);
+
+         // 处理歌词URL
+        if (!songId.empty())
+        {
+            current_lyric_url_ = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + songId;
+            ESP_LOGI(TAG, "Loading lyrics for: %s", song_name.c_str());
+            // 启动歌词下载和显示
+            if (is_lyric_running_)
+            {
+                is_lyric_running_ = false;
+                if (lyric_thread_.joinable())
+                {
+                    lyric_thread_.join();
+                }
+            }
+
+            is_lyric_running_ = true;
+            current_lyric_index_ = -1;
+            lyrics_.clear();
+
+            lyric_thread_ = std::thread(&Esp32Music::LyricDisplayThread, this);
+        }
+        else
+        {
+            ESP_LOGW(TAG, "No lyric URL found for this song");
+        }
         return true;
     }
     else
@@ -1307,11 +1334,6 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url)
             retry_count++;
             continue;
         }
-
-        // 设置请求头
-        http->SetHeader("User-Agent", "ESP32-Music-Player/1.0");
-        http->SetHeader("Accept", "text/plain");
-
         // 打开GET连接
         ESP_LOGI(TAG, "小智开源音乐固件qq交流群:826072986");
         if (!http->Open("GET", current_url))
@@ -1444,109 +1466,39 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url)
 bool Esp32Music::ParseLyrics(const std::string &lyric_content)
 {
     ESP_LOGI(TAG, "Parsing lyrics content");
+    ESP_LOGI(TAG, "Lyric content: %s", lyric_content.c_str());
 
-    // 使用锁保护lyrics_数组访问
-    std::lock_guard<std::mutex> lock(lyrics_mutex_);
-
-    lyrics_.clear();
-
-    // 按行分割歌词内容
-    std::istringstream stream(lyric_content);
-    std::string line;
-
-    while (std::getline(stream, line))
+    // 解析响应JSON以提取音频URL
+    cJSON *rsp = cJSON_Parse(lyric_content.c_str());
+    if(!rsp)
     {
-        // 去除行尾的回车符
-        if (!line.empty() && line.back() == '\r')
-        {
-            line.pop_back();
-        }
-
-        // 跳过空行
-        if (line.empty())
-        {
-            continue;
-        }
-
-        // 解析LRC格式: [mm:ss.xx]歌词文本
-        if (line.length() > 10 && line[0] == '[')
-        {
-            size_t close_bracket = line.find(']');
-            if (close_bracket != std::string::npos)
-            {
-                std::string tag_or_time = line.substr(1, close_bracket - 1);
-                std::string content = line.substr(close_bracket + 1);
-
-                // 检查是否是元数据标签而不是时间戳
-                // 元数据标签通常是 [ti:标题], [ar:艺术家], [al:专辑] 等
-                size_t colon_pos = tag_or_time.find(':');
-                if (colon_pos != std::string::npos)
-                {
-                    std::string left_part = tag_or_time.substr(0, colon_pos);
-
-                    // 检查冒号左边是否是时间（数字）
-                    bool is_time_format = true;
-                    for (char c : left_part)
-                    {
-                        if (!isdigit(c))
-                        {
-                            is_time_format = false;
-                            break;
-                        }
-                    }
-
-                    // 如果不是时间格式，跳过这一行（元数据标签）
-                    if (!is_time_format)
-                    {
-                        // 可以在这里处理元数据，例如提取标题、艺术家等信息
-                        ESP_LOGD(TAG, "Skipping metadata tag: [%s]", tag_or_time.c_str());
-                        continue;
-                    }
-
-                    // 是时间格式，解析时间戳
-                    try
-                    {
-                        int minutes = std::stoi(tag_or_time.substr(0, colon_pos));
-                        float seconds = std::stof(tag_or_time.substr(colon_pos + 1));
-                        int timestamp_ms = minutes * 60 * 1000 + (int)(seconds * 1000);
-
-                        // 安全处理歌词文本，确保UTF-8编码正确
-                        std::string safe_lyric_text;
-                        if (!content.empty())
-                        {
-                            // 创建安全副本并验证字符串
-                            safe_lyric_text = content;
-                            // 确保字符串以null结尾
-                            safe_lyric_text.shrink_to_fit();
-                        }
-
-                        lyrics_.push_back(std::make_pair(timestamp_ms, safe_lyric_text));
-
-                        if (!safe_lyric_text.empty())
-                        {
-                            // 限制日志输出长度，避免中文字符截断问题
-                            size_t log_len = std::min(safe_lyric_text.length(), size_t(50));
-                            std::string log_text = safe_lyric_text.substr(0, log_len);
-                            ESP_LOGD(TAG, "Parsed lyric: [%d ms] %s", timestamp_ms, log_text.c_str());
-                        }
-                        else
-                        {
-                            ESP_LOGD(TAG, "Parsed lyric: [%d ms] (empty)", timestamp_ms);
-                        }
-                    }
-                    catch (const std::exception &e)
-                    {
-                        ESP_LOGW(TAG, "Failed to parse time: %s", tag_or_time.c_str());
-                    }
-                }
-            }
-        }
+        return false;
     }
 
-    // 按时间戳排序
-    std::sort(lyrics_.begin(), lyrics_.end());
+    // 获取abslist数组
+    cJSON *data = cJSON_GetObjectItem(rsp, "data");
+    cJSON *lrclist = cJSON_GetObjectItem(data, "lrclist");
 
+    if (!cJSON_IsArray(lrclist) || cJSON_GetArraySize(lrclist) == 0)
+    {
+        ESP_LOGE(TAG, "can not get lrclist from json!");
+        cJSON_Delete(rsp);
+        return false;
+    }
+
+    for(int i = 0; i < cJSON_GetArraySize(lrclist); i++)
+    {
+        cJSON *lyric = cJSON_GetArrayItem(lrclist, i);
+        cJSON *content = cJSON_GetObjectItem(lyric, "lineLyric");
+        cJSON *timeStr = cJSON_GetObjectItem(lyric, "time");
+        float time = atof(timeStr->valuestring);
+        int time_ms = (int)(time * 1000);
+        std::string content_str = content->valuestring;
+        lyrics_.push_back(std::make_pair(time_ms, content_str));
+    }
+    std::sort(lyrics_.begin(), lyrics_.end());
     ESP_LOGI(TAG, "Parsed %d lyric lines", lyrics_.size());
+    cJSON_Delete(rsp);
     return !lyrics_.empty();
 }
 
