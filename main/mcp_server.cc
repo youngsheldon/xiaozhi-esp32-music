@@ -116,7 +116,7 @@ void McpServer::AddCommonTools() {
             }),
             [music](const PropertyList& properties) -> ReturnValue {
                 auto song_name = properties["song_name"].value<std::string>();
-                if (!music->Download2(song_name)) {
+                if (!music->Download(song_name)) {
                     return "{\"success\": false, \"message\": \"获取音乐资源失败\"}";
                 }
                 auto download_result = music->GetDownloadResult();

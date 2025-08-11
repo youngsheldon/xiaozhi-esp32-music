@@ -47,6 +47,8 @@ private:
     int64_t last_frame_time_ms_;    // 上一帧的时间戳
     int total_frames_decoded_;      // 已解码的帧数
 
+    std::vector<std::string> recommended_songs_;  // 推荐歌曲列表
+
     // 音频缓冲区
     std::queue<AudioChunk> audio_buffer_;
     std::mutex buffer_mutex_;
@@ -71,6 +73,7 @@ private:
     // 歌词相关私有方法
     bool DownloadLyrics(const std::string& lyric_url);
     bool ParseLyrics(const std::string& lyric_content);
+    bool ParseRecommondSong(const std::string& lyric_content);
     void LyricDisplayThread();
     void UpdateLyricDisplay(int64_t current_time_ms);
     
@@ -84,7 +87,6 @@ public:
     ~Esp32Music();
 
     virtual bool Download(const std::string& song_name) override;
-    virtual bool Download2(const std::string& song_name) override;
     virtual bool Play() override;
     virtual bool Stop() override;
     virtual std::string GetDownloadResult() override;

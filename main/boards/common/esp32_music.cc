@@ -231,7 +231,7 @@ Esp32Music::~Esp32Music()
     ESP_LOGI(TAG, "Music player destroyed successfully");
 }
 
-bool Esp32Music::Download2(const std::string &song_name)
+bool Esp32Music::Download(const std::string &song_name)
 {
     ESP_LOGI(TAG, "Starting to get music details for: %s", song_name.c_str());
 
@@ -317,6 +317,7 @@ bool Esp32Music::Download2(const std::string &song_name)
         if (!songId.empty())
         {
             current_lyric_url_ = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + songId;
+            // current_lyric_url_ = "https://www.kuwo.cn/newh5/singles/songinfoandlrc?musicId=" + songId;
             ESP_LOGI(TAG, "Loading lyrics for: %s", song_name.c_str());
             // 启动歌词下载和显示
             if (is_lyric_running_)
@@ -397,168 +398,6 @@ std::string Esp32Music::getSongPlayUrl(const std::string& req)
         }
     }
     return "";
-}
-
-bool Esp32Music::Download(const std::string &song_name)
-{
-    ESP_LOGI(TAG, "小智开源音乐固件qq交流群:826072986");
-    ESP_LOGI(TAG, "Starting to get music details for: %s", song_name.c_str());
-
-    // 清空之前的下载数据
-    last_downloaded_data_.clear();
-
-    // 保存歌名用于后续显示
-    current_song_name_ = song_name;
-
-    // 第一步：请求stream_pcm接口获取音频信息
-    std::string api_url = "http://www.jsrc.top:5566/stream_pcm";
-    std::string full_url = api_url + "?song=" + url_encode(song_name);
-
-    ESP_LOGI(TAG, "Request URL: %s", full_url.c_str());
-
-    // 使用Board提供的HTTP客户端
-    auto http = Board::GetInstance().CreateHttp();
-
-    // 设置请求头
-    http->SetHeader("User-Agent", "ESP32-Music-Player/1.0");
-    http->SetHeader("Accept", "application/json");
-
-    // 打开GET连接
-    if (!http->Open("GET", full_url))
-    {
-        ESP_LOGE(TAG, "Failed to connect to music API");
-        return false;
-    }
-
-    // 检查响应状态码
-    int status_code = http->GetStatusCode();
-    if (status_code != 200)
-    {
-        ESP_LOGE(TAG, "HTTP GET failed with status code: %d", status_code);
-        http->Close();
-        return false;
-    }
-
-    // 读取响应数据
-    last_downloaded_data_ = http->ReadAll();
-    http->Close();
-
-    ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %d", status_code, last_downloaded_data_.length());
-    ESP_LOGD(TAG, "Complete music details response: %s", last_downloaded_data_.c_str());
-
-    if (!last_downloaded_data_.empty())
-    {
-        // 解析响应JSON以提取音频URL
-        cJSON *response_json = cJSON_Parse(last_downloaded_data_.c_str());
-        if (response_json)
-        {
-            // 提取关键信息
-            cJSON *artist = cJSON_GetObjectItem(response_json, "artist");
-            cJSON *title = cJSON_GetObjectItem(response_json, "title");
-            cJSON *audio_url = cJSON_GetObjectItem(response_json, "audio_url");
-            cJSON *lyric_url = cJSON_GetObjectItem(response_json, "lyric_url");
-
-            if (cJSON_IsString(artist))
-            {
-                ESP_LOGI(TAG, "Artist: %s", artist->valuestring);
-            }
-            if (cJSON_IsString(title))
-            {
-                ESP_LOGI(TAG, "Title: %s", title->valuestring);
-            }
-
-            // 检查audio_url是否有效
-            if (cJSON_IsString(audio_url) && audio_url->valuestring && strlen(audio_url->valuestring) > 0)
-            {
-                ESP_LOGI(TAG, "Audio URL path: %s", audio_url->valuestring);
-
-                // 第二步：拼接完整的音频下载URL，确保对audio_url进行URL编码
-                std::string base_url = "http://www.jsrc.top:5566";
-                std::string audio_path = audio_url->valuestring;
-
-                // 使用统一的URL构建功能
-                if (audio_path.find("?") != std::string::npos)
-                {
-                    size_t query_pos = audio_path.find("?");
-                    std::string path = audio_path.substr(0, query_pos);
-                    std::string query = audio_path.substr(query_pos + 1);
-
-                    current_music_url_ = buildUrlWithParams(base_url, path, query);
-                }
-                else
-                {
-                    current_music_url_ = base_url + audio_path;
-                }
-
-                ESP_LOGI(TAG, "小智开源音乐固件qq交流群:826072986");
-                ESP_LOGI(TAG, "Starting streaming playback for: %s", song_name.c_str());
-                song_name_displayed_ = false; // 重置歌名显示标志
-                StartStreaming(current_music_url_);
-
-                // 处理歌词URL
-                if (cJSON_IsString(lyric_url) && lyric_url->valuestring && strlen(lyric_url->valuestring) > 0)
-                {
-                    // 拼接完整的歌词下载URL，使用相同的URL构建逻辑
-                    std::string lyric_path = lyric_url->valuestring;
-                    if (lyric_path.find("?") != std::string::npos)
-                    {
-                        size_t query_pos = lyric_path.find("?");
-                        std::string path = lyric_path.substr(0, query_pos);
-                        std::string query = lyric_path.substr(query_pos + 1);
-
-                        current_lyric_url_ = buildUrlWithParams(base_url, path, query);
-                    }
-                    else
-                    {
-                        current_lyric_url_ = base_url + lyric_path;
-                    }
-
-                    ESP_LOGI(TAG, "Loading lyrics for: %s", song_name.c_str());
-
-                    // 启动歌词下载和显示
-                    if (is_lyric_running_)
-                    {
-                        is_lyric_running_ = false;
-                        if (lyric_thread_.joinable())
-                        {
-                            lyric_thread_.join();
-                        }
-                    }
-
-                    is_lyric_running_ = true;
-                    current_lyric_index_ = -1;
-                    lyrics_.clear();
-
-                    lyric_thread_ = std::thread(&Esp32Music::LyricDisplayThread, this);
-                }
-                else
-                {
-                    ESP_LOGW(TAG, "No lyric URL found for this song");
-                }
-
-                cJSON_Delete(response_json);
-                return true;
-            }
-            else
-            {
-                // audio_url为空或无效
-                ESP_LOGE(TAG, "Audio URL not found or empty for song: %s", song_name.c_str());
-                ESP_LOGE(TAG, "Failed to find music: 没有找到歌曲 '%s'", song_name.c_str());
-                cJSON_Delete(response_json);
-                return false;
-            }
-        }
-        else
-        {
-            ESP_LOGE(TAG, "Failed to parse JSON response");
-        }
-    }
-    else
-    {
-        ESP_LOGE(TAG, "Empty response from music API");
-    }
-
-    return false;
 }
 
 bool Esp32Music::Play()
@@ -1459,6 +1298,7 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url)
     }
 
     ESP_LOGI(TAG, "Lyrics downloaded successfully, size: %d bytes", lyric_content.length());
+    // ParseRecommondSong(lyric_content);
     return ParseLyrics(lyric_content);
 }
 
@@ -1500,6 +1340,39 @@ bool Esp32Music::ParseLyrics(const std::string &lyric_content)
     ESP_LOGI(TAG, "Parsed %d lyric lines", lyrics_.size());
     cJSON_Delete(rsp);
     return !lyrics_.empty();
+}
+
+bool Esp32Music::ParseRecommondSong(const std::string& lyric_content)
+{
+    ESP_LOGI(TAG, "ParseRecommondSong");
+
+    // 解析响应JSON以提取音频URL
+    cJSON *rsp = cJSON_Parse(lyric_content.c_str());
+    if(!rsp)
+    {
+        return false;
+    }
+
+    // 获取abslist数组
+    cJSON *data = cJSON_GetObjectItem(rsp, "data");
+    cJSON *simpl = cJSON_GetObjectItem(data, "simpl");
+    cJSON *musiclist = cJSON_GetObjectItem(simpl, "musiclist");
+
+    if (!cJSON_IsArray(musiclist) || cJSON_GetArraySize(musiclist) == 0)
+    {
+        ESP_LOGE(TAG, "can not get musiclist from json!");
+        cJSON_Delete(rsp);
+        return false;
+    }
+
+    for(int i = 0; i < cJSON_GetArraySize(musiclist); i++)
+    {
+        cJSON *lyric = cJSON_GetArrayItem(musiclist, i);
+        cJSON *musicrId = cJSON_GetObjectItem(lyric, "musicrId");
+        recommended_songs_.push_back(std::string(musicrId->valuestring));
+    }
+    cJSON_Delete(rsp);
+    return !recommended_songs_.empty();
 }
 
 // 歌词显示线程
