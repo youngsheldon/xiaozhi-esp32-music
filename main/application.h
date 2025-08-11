@@ -45,6 +45,7 @@ enum DeviceState {
     kDeviceStateUpgrading,
     kDeviceStateActivating,
     kDeviceStateAudioTesting,
+    kDeviceStateMusicPlayDone,
     kDeviceStateFatalError
 };
 

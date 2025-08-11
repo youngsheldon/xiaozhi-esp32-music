@@ -8,6 +8,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <vector>
+#include <set>
 
 #include "music.h"
 
@@ -47,7 +48,9 @@ private:
     int64_t last_frame_time_ms_;    // 上一帧的时间戳
     int total_frames_decoded_;      // 已解码的帧数
 
-    std::vector<std::string> recommended_songs_;  // 推荐歌曲列表
+    // 歌曲推荐相关
+    std::string play_next_;
+    std::set<std::string> songs_played_;  
 
     // 音频缓冲区
     std::queue<AudioChunk> audio_buffer_;
@@ -86,6 +89,7 @@ public:
     Esp32Music();
     ~Esp32Music();
 
+    virtual bool playNextSong() override;
     virtual bool Download(const std::string& song_name) override;
     virtual bool Play() override;
     virtual bool Stop() override;
