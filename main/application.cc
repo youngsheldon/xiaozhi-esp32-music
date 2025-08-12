@@ -985,15 +985,6 @@ void Application::SetDeviceState(DeviceState state) {
         }
     }
     
-    if(state == kDeviceStateMusicPlayDone)
-    {
-        display->SetEmotion("neutral");
-        auto music = board.GetMusic();
-        if (music) {
-            music->playNextSong();
-        }
-    }
-
     switch (state) {
         case kDeviceStateUnknown:
         case kDeviceStateIdle:

@@ -100,12 +100,13 @@ Esp32Music::Esp32Music() : last_downloaded_data_(), current_music_url_(), curren
                            song_name_displayed_(false), current_lyric_url_(), lyrics_(),
                            current_lyric_index_(-1), lyric_thread_(), is_lyric_running_(false),
                            is_playing_(false), is_downloading_(false),
-                           play_thread_(), download_thread_(), play_next_(), songs_played_(),audio_buffer_(), buffer_mutex_(),
-                           buffer_cv_(), buffer_size_(0), mp3_decoder_(nullptr), mp3_frame_info_(),
+                           play_thread_(), download_thread_(), play_next_(), songs_played_(), audio_buffer_(), buffer_mutex_(),
+                           buffer_cv_(), play_next_cv_(), next_mutex_(), need_to_play_next_(false), buffer_size_(0), mp3_decoder_(nullptr), mp3_frame_info_(),
                            mp3_decoder_initialized_(false)
 {
     ESP_LOGI(TAG, "Music player initialized");
     InitializeMp3Decoder();
+    std::thread(&Esp32Music::PlayNextDetect, this).detach();
 }
 
 Esp32Music::~Esp32Music()
@@ -231,6 +232,28 @@ Esp32Music::~Esp32Music()
     ESP_LOGI(TAG, "Music player destroyed successfully");
 }
 
+void Esp32Music::PlayNextDetect()
+{
+    while (true)
+    {
+        std::unique_lock<std::mutex> lock(next_mutex_);
+        // 等待直到 need_to_play_next_ 为 true
+        play_next_cv_.wait(lock, [this]
+                           { return need_to_play_next_; });
+        need_to_play_next_ = false;
+        // 释放锁，允许其他线程修改 need_to_play_next_
+        lock.unlock();
+        playNextSong();
+        // 重新获取锁
+        lock.lock();
+        // 检查是否有新的播放请求
+        if (need_to_play_next_)
+        {
+            continue; // 如果有新的请求，直接跳过重置步骤
+        }
+    }
+}
+
 bool Esp32Music::Download(const std::string &song_name)
 {
     ESP_LOGI(TAG, "Starting to get music details for: %s", song_name.c_str());
@@ -351,7 +374,7 @@ bool Esp32Music::Download(const std::string &song_name)
 
 bool Esp32Music::playNextSong()
 {
-    if(play_next_.empty())
+    if (play_next_.empty())
     {
         ESP_LOGE(TAG, "song_id is empty");
         return false;
@@ -1067,7 +1090,11 @@ void Esp32Music::PlayAudioStream()
     ESP_LOGI(TAG, "Audio stream playback finished, total played: %d bytes", total_played);
 
     is_playing_ = false;
-    Application::GetInstance().SetDeviceState(kDeviceStateMusicPlayDone);
+    need_to_play_next_ = true;
+    {
+        std::lock_guard<std::mutex> lock(next_mutex_);
+        play_next_cv_.notify_all();
+    }
 }
 
 // 清空音频缓冲区

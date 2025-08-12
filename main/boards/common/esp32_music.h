@@ -56,6 +56,9 @@ private:
     std::queue<AudioChunk> audio_buffer_;
     std::mutex buffer_mutex_;
     std::condition_variable buffer_cv_;
+    std::condition_variable play_next_cv_;
+    std::mutex next_mutex_;
+    bool need_to_play_next_;
     size_t buffer_size_;
     static constexpr size_t MAX_BUFFER_SIZE = 512 * 1024;  // 512KB缓冲区
     static constexpr size_t MIN_BUFFER_SIZE = 64 * 1024;   // 64KB最小播放缓冲
@@ -72,7 +75,8 @@ private:
     bool InitializeMp3Decoder();
     void CleanupMp3Decoder();
     void ResetSampleRate();  // 重置采样率到原始值
-    
+    void PlayNextDetect();
+
     // 歌词相关私有方法
     bool DownloadLyrics(const std::string& lyric_url);
     bool ParseLyrics(const std::string& lyric_content);
