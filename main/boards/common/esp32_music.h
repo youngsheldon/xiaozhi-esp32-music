@@ -59,6 +59,7 @@ private:
     std::condition_variable play_next_cv_;
     std::mutex next_mutex_;
     bool need_to_play_next_;
+    bool force_stop_;
     size_t buffer_size_;
     static constexpr size_t MAX_BUFFER_SIZE = 512 * 1024;  // 512KB缓冲区
     static constexpr size_t MIN_BUFFER_SIZE = 64 * 1024;   // 64KB最小播放缓冲
@@ -78,7 +79,7 @@ private:
     void PlayNextDetect();
 
     // 歌词相关私有方法
-    bool DownloadLyrics(const std::string& lyric_url);
+    bool DownloadLyrics(const std::string &lyric_url, std::string &lyric_content);
     bool ParseLyrics(const std::string& lyric_content);
     bool ParseRecommondSong(const std::string& lyric_content);
     void LyricDisplayThread();

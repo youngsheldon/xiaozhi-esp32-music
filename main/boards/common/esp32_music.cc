@@ -101,7 +101,7 @@ Esp32Music::Esp32Music() : last_downloaded_data_(), current_music_url_(), curren
                            current_lyric_index_(-1), lyric_thread_(), is_lyric_running_(false),
                            is_playing_(false), is_downloading_(false),
                            play_thread_(), download_thread_(), play_next_(), songs_played_(), audio_buffer_(), buffer_mutex_(),
-                           buffer_cv_(), play_next_cv_(), next_mutex_(), need_to_play_next_(false), buffer_size_(0), mp3_decoder_(nullptr), mp3_frame_info_(),
+                           buffer_cv_(), play_next_cv_(), next_mutex_(), need_to_play_next_(false), force_stop_(false), buffer_size_(0), mp3_decoder_(nullptr), mp3_frame_info_(),
                            mp3_decoder_initialized_(false)
 {
     ESP_LOGI(TAG, "Music player initialized");
@@ -603,6 +603,7 @@ bool Esp32Music::StopStreaming()
     // 停止下载和播放标志
     is_downloading_ = false;
     is_playing_ = false;
+    force_stop_ = true;
 
     // 清空歌名显示
     auto &board = Board::GetInstance();
@@ -1090,11 +1091,13 @@ void Esp32Music::PlayAudioStream()
     ESP_LOGI(TAG, "Audio stream playback finished, total played: %d bytes", total_played);
 
     is_playing_ = false;
-    need_to_play_next_ = true;
+    if(!force_stop_)
     {
+        need_to_play_next_ = true;
         std::lock_guard<std::mutex> lock(next_mutex_);
         play_next_cv_.notify_all();
     }
+    force_stop_ = false;
 }
 
 // 清空音频缓冲区
@@ -1199,7 +1202,7 @@ size_t Esp32Music::SkipId3Tag(uint8_t *data, size_t size)
 }
 
 // 下载歌词
-bool Esp32Music::DownloadLyrics(const std::string &lyric_url)
+bool Esp32Music::DownloadLyrics(const std::string &lyric_url, std::string &lyric_content)
 {
     ESP_LOGI(TAG, "Downloading lyrics from: %s", lyric_url.c_str());
 
@@ -1214,7 +1217,6 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url)
     const int max_retries = 3;
     int retry_count = 0;
     bool success = false;
-    std::string lyric_content;
     std::string current_url = lyric_url;
     int redirect_count = 0;
     const int max_redirects = 5; // 最多允许5次重定向
@@ -1359,9 +1361,13 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url)
         return false;
     }
 
+    if(lyric_content.length() < 256)
+    {
+        ESP_LOGE(TAG, "Lyric content is too short, size: %d bytes, content: %s", lyric_content.length(), lyric_content.c_str());
+        return false;
+    }
     ESP_LOGI(TAG, "Lyrics downloaded successfully, size: %d bytes", lyric_content.length());
-    ParseRecommondSong(lyric_content);
-    return ParseLyrics(lyric_content);
+    return true;
 }
 
 // 解析歌词
@@ -1502,12 +1508,27 @@ void Esp32Music::LyricDisplayThread()
 {
     ESP_LOGI(TAG, "Lyric display thread started");
 
-    if (!DownloadLyrics(current_lyric_url_))
+    bool is_downloadLricsOk = false;
+    std::string lyric_content;
+    for(int i = 0; i < 5; i++)
+    {
+        if(DownloadLyrics(current_lyric_url_, lyric_content))
+        {
+            is_downloadLricsOk = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+
+    if(!is_downloadLricsOk)
     {
         ESP_LOGE(TAG, "Failed to download or parse lyrics");
         is_lyric_running_ = false;
         return;
     }
+
+    ParseRecommondSong(lyric_content);
+    ParseLyrics(lyric_content);
 
     // 定期检查是否需要更新显示(频率可以降低)
     while (is_lyric_running_ && is_playing_)
