@@ -98,7 +98,7 @@ static std::string buildUrlWithParams(const std::string &base_url, const std::st
 
 Esp32Music::Esp32Music() : last_downloaded_data_(), current_music_url_(), current_song_name_(),
                            song_name_displayed_(false), current_lyric_url_(), lyrics_(),
-                           current_lyric_index_(-1), lyric_thread_(), is_lyric_running_(false),
+                           current_lyric_index_(-1), 
                            is_playing_(false), is_downloading_(false),
                            play_thread_(), download_thread_(), play_next_(), songs_played_(), audio_buffer_(), buffer_mutex_(),
                            buffer_cv_(), play_next_cv_(), next_mutex_(), need_to_play_next_(false), force_stop_(false), buffer_size_(0), mp3_decoder_(nullptr), mp3_frame_info_(),
@@ -116,7 +116,6 @@ Esp32Music::~Esp32Music()
     // 停止所有操作
     is_downloading_ = false;
     is_playing_ = false;
-    is_lyric_running_ = false;
 
     // 通知所有等待的线程
     {
@@ -215,14 +214,6 @@ Esp32Music::~Esp32Music()
             play_thread_.join();
         }
         ESP_LOGI(TAG, "Playback thread finished");
-    }
-
-    // 等待歌词线程结束
-    if (lyric_thread_.joinable())
-    {
-        ESP_LOGI(TAG, "Waiting for lyric thread to finish");
-        lyric_thread_.join();
-        ESP_LOGI(TAG, "Lyric thread finished");
     }
 
     // 清理缓冲区和MP3解码器
@@ -342,21 +333,9 @@ bool Esp32Music::Download(const std::string &song_name)
             // current_lyric_url_ = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + songId;
             current_lyric_url_ = "https://www.kuwo.cn/newh5/singles/songinfoandlrc?musicId=" + songId;
             ESP_LOGI(TAG, "Loading lyrics for: %s", song_name.c_str());
-            // 启动歌词下载和显示
-            if (is_lyric_running_)
-            {
-                is_lyric_running_ = false;
-                if (lyric_thread_.joinable())
-                {
-                    lyric_thread_.join();
-                }
-            }
-
-            is_lyric_running_ = true;
             current_lyric_index_ = -1;
             lyrics_.clear();
-
-            lyric_thread_ = std::thread(&Esp32Music::LyricDisplayThread, this);
+            std::thread(&Esp32Music::LyricDisplayThread, this).detach();
         }
         else
         {
@@ -392,20 +371,9 @@ bool Esp32Music::playNextSong()
     StartStreaming(current_music_url_);
     // current_lyric_url_ = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + songId;
     current_lyric_url_ = "https://www.kuwo.cn/newh5/singles/songinfoandlrc?musicId=" + play_next_;
-    // 启动歌词下载和显示
-    if (is_lyric_running_)
-    {
-        is_lyric_running_ = false;
-        if (lyric_thread_.joinable())
-        {
-            lyric_thread_.join();
-        }
-    }
-
-    is_lyric_running_ = true;
     current_lyric_index_ = -1;
     lyrics_.clear();
-    lyric_thread_ = std::thread(&Esp32Music::LyricDisplayThread, this);
+    std::thread(&Esp32Music::LyricDisplayThread, this).detach();
     return true;
 }
 
@@ -1523,19 +1491,11 @@ void Esp32Music::LyricDisplayThread()
     if(!is_downloadLricsOk)
     {
         ESP_LOGE(TAG, "Failed to download or parse lyrics");
-        is_lyric_running_ = false;
         return;
     }
 
     ParseRecommondSong(lyric_content);
     ParseLyrics(lyric_content);
-
-    // 定期检查是否需要更新显示(频率可以降低)
-    while (is_lyric_running_ && is_playing_)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-
     ESP_LOGI(TAG, "Lyric display thread finished");
 }
 

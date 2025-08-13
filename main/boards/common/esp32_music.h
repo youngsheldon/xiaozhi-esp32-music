@@ -38,8 +38,6 @@ private:
     std::vector<std::pair<int, std::string>> lyrics_;  // 时间戳和歌词文本
     std::mutex lyrics_mutex_;  // 保护lyrics_数组的互斥锁
     std::atomic<int> current_lyric_index_;
-    std::thread lyric_thread_;
-    std::atomic<bool> is_lyric_running_;
     std::atomic<bool> is_playing_;
     std::atomic<bool> is_downloading_;
     std::thread play_thread_;
