@@ -8,7 +8,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <vector>
-#include <set>
+#include <map>
 
 #include "music.h"
 
@@ -48,7 +48,7 @@ private:
 
     // 歌曲推荐相关
     std::string play_next_;
-    std::set<std::string> songs_played_;  
+    std::map<std::string, bool> song_played_map_;  // 保存歌曲ID和歌曲名的映射关系
 
     // 音频缓冲区
     std::queue<AudioChunk> audio_buffer_;
