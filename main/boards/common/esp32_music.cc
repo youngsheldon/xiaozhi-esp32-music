@@ -303,7 +303,8 @@ bool Esp32Music::Download(const std::string &song_name)
         // 获取第一个歌曲对象
         cJSON *firstSong = cJSON_GetArrayItem(abslist, 0);
         cJSON *targetId = cJSON_GetObjectItem(firstSong, "DC_TARGETID");
-
+        cJSON *artist = cJSON_GetObjectItem(firstSong, "ARTIST");
+        cJSON *songName = cJSON_GetObjectItem(firstSong, "SONGNAME");
         if (!targetId || !targetId->valuestring)
         {
             ESP_LOGE(TAG, "未找到歌曲ID");
@@ -313,10 +314,12 @@ bool Esp32Music::Download(const std::string &song_name)
 
         ESP_LOGI(TAG, "歌曲ID: %s", targetId->valuestring);
         string songId = string(targetId->valuestring);
+        string artistName = string(artist->valuestring);
+        string songNameStr = string(songName->valuestring);
+        ESP_LOGI(TAG, "歌曲名称: %s", songNameStr.c_str());
         string url = KwWork::getUrl(songId);
         ESP_LOGI(TAG, "url = %s", url.c_str());
         cJSON_Delete(response_json);
-        song_played_map_[songId] = true;
         // 打开GET连接
         current_music_url_ = this->getSongPlayUrl(url);
         if (current_music_url_.empty())
@@ -331,12 +334,12 @@ bool Esp32Music::Download(const std::string &song_name)
         // 处理歌词URL
         if (!songId.empty())
         {
-            // current_lyric_url_ = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + songId;
-            current_lyric_url_ = "https://www.kuwo.cn/newh5/singles/songinfoandlrc?musicId=" + songId;
+            current_lyric_url_ = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + songId;
             ESP_LOGI(TAG, "Loading lyrics for: %s", song_name.c_str());
             current_lyric_index_ = -1;
             lyrics_.clear();
             std::thread(&Esp32Music::LyricDisplayThread, this).detach();
+            std::thread(&Esp32Music::ParseRecommondSong, this, artistName, songId).detach();
         }
         else
         {
@@ -354,6 +357,28 @@ bool Esp32Music::Download(const std::string &song_name)
 
 bool Esp32Music::playNextSong()
 {
+    bool next_song_found = false;
+    {
+        std::lock_guard<std::mutex> lock(next_mutex_);
+        for (const auto &elem : song_played_map_)
+        {
+            if (elem.second == false)
+            {
+                play_next_ = elem.first;
+                break;
+            }
+        }
+        if (next_song_found)
+        {
+            ESP_LOGI(TAG, "LyricDisplayThread: play next song: %s", play_next_.c_str());
+        }
+        // 打印song_played_map_
+        for (const auto &elem : song_played_map_)
+        {
+            ESP_LOGI(TAG, "song_played_map_ key: %s, value: %d", elem.first.c_str(), elem.second);
+        }
+    }
+
     if (play_next_.empty())
     {
         ESP_LOGE(TAG, "song_id is empty");
@@ -371,8 +396,7 @@ bool Esp32Music::playNextSong()
     song_played_map_[play_next_] = true;
     ESP_LOGI(TAG, "songUrl = %s", current_music_url_.c_str());
     StartStreaming(current_music_url_);
-    // current_lyric_url_ = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + songId;
-    current_lyric_url_ = "https://www.kuwo.cn/newh5/singles/songinfoandlrc?musicId=" + play_next_;
+    current_lyric_url_ = "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + play_next_;
     current_lyric_index_ = -1;
     lyrics_.clear();
     std::thread(&Esp32Music::LyricDisplayThread, this).detach();
@@ -1172,14 +1196,14 @@ size_t Esp32Music::SkipId3Tag(uint8_t *data, size_t size)
 }
 
 // 下载歌词
-bool Esp32Music::DownloadLyrics(const std::string &lyric_url, std::string &lyric_content)
+bool Esp32Music::Request(const std::string &url, std::string &response)
 {
-    ESP_LOGI(TAG, "Downloading lyrics from: %s", lyric_url.c_str());
+    ESP_LOGI(TAG, "requesting from: %s", url.c_str());
 
     // 检查URL是否为空
-    if (lyric_url.empty())
+    if (url.empty())
     {
-        ESP_LOGE(TAG, "Lyric URL is empty!");
+        ESP_LOGE(TAG, "URL is empty!");
         return false;
     }
 
@@ -1187,7 +1211,7 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url, std::string &lyric
     const int max_retries = 3;
     int retry_count = 0;
     bool success = false;
-    std::string current_url = lyric_url;
+    std::string current_url = url;
     int redirect_count = 0;
     const int max_redirects = 5; // 最多允许5次重定向
 
@@ -1195,7 +1219,7 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url, std::string &lyric
     {
         if (retry_count > 0)
         {
-            ESP_LOGI(TAG, "Retrying lyric download (attempt %d of %d)", retry_count + 1, max_retries);
+            ESP_LOGI(TAG, "Retrying request attempts (attempt %d of %d)", retry_count + 1, max_retries);
             // 重试前暂停一下
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
@@ -1204,14 +1228,14 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url, std::string &lyric
         auto http = Board::GetInstance().CreateHttp();
         if (!http)
         {
-            ESP_LOGE(TAG, "Failed to create HTTP client for lyric download");
+            ESP_LOGE(TAG, "Failed to create HTTP client for request");
             retry_count++;
             continue;
         }
         // 打开GET连接
         if (!http->Open("GET", current_url))
         {
-            ESP_LOGE(TAG, "Failed to open HTTP connection for lyrics");
+            ESP_LOGE(TAG, "Failed to open HTTP connection for request");
             delete http;
             retry_count++;
             continue;
@@ -1219,7 +1243,7 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url, std::string &lyric
 
         // 检查HTTP状态码
         int status_code = http->GetStatusCode();
-        ESP_LOGI(TAG, "Lyric download HTTP status code: %d", status_code);
+        ESP_LOGI(TAG, "HTTP status code: %d", status_code);
 
         // 处理重定向 - 由于Http类没有GetHeader方法，我们只能根据状态码判断
         if (status_code == 301 || status_code == 302 || status_code == 303 || status_code == 307 || status_code == 308)
@@ -1243,36 +1267,33 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url, std::string &lyric
         }
 
         // 读取响应
-        lyric_content.clear();
+        response.clear();
         char buffer[1024];
         int bytes_read;
         bool read_error = false;
         int total_read = 0;
 
         // 由于无法获取Content-Length和Content-Type头，我们不知道预期大小和内容类型
-        ESP_LOGD(TAG, "Starting to read lyric content");
-
+        ESP_LOGD(TAG, "Starting to read content");
         while (true)
         {
             bytes_read = http->Read(buffer, sizeof(buffer) - 1);
-            // ESP_LOGD(TAG, "Lyric HTTP read returned %d bytes", bytes_read); // 注释掉以减少日志输出
-
             if (bytes_read > 0)
             {
                 buffer[bytes_read] = '\0';
-                lyric_content += buffer;
+                response += buffer;
                 total_read += bytes_read;
 
                 // 定期打印下载进度 - 改为DEBUG级别减少输出
                 if (total_read % 4096 == 0)
                 {
-                    ESP_LOGD(TAG, "Downloaded %d bytes so far", total_read);
+                    ESP_LOGD(TAG, "requseted %d bytes so far", total_read);
                 }
             }
             else if (bytes_read == 0)
             {
                 // 正常结束，没有更多数据
-                ESP_LOGD(TAG, "Lyric download completed, total bytes: %d", total_read);
+                ESP_LOGD(TAG, "request completed, total bytes: %d", total_read);
                 success = true;
                 break;
             }
@@ -1280,15 +1301,15 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url, std::string &lyric
             {
                 // bytes_read < 0，可能是ESP-IDF的已知问题
                 // 如果已经读取到了一些数据，则认为下载成功
-                if (!lyric_content.empty())
+                if (!response.empty())
                 {
-                    ESP_LOGW(TAG, "HTTP read returned %d, but we have data (%d bytes), continuing", bytes_read, lyric_content.length());
+                    ESP_LOGW(TAG, "HTTP read returned %d, but we have data (%d bytes), continuing", bytes_read, response.length());
                     success = true;
                     break;
                 }
                 else
                 {
-                    ESP_LOGE(TAG, "Failed to read lyric data: error code %d", bytes_read);
+                    ESP_LOGE(TAG, "Failed to read data: error code %d", bytes_read);
                     read_error = true;
                     break;
                 }
@@ -1314,29 +1335,29 @@ bool Esp32Music::DownloadLyrics(const std::string &lyric_url, std::string &lyric
     // 检查是否超过了最大重试次数
     if (retry_count >= max_retries)
     {
-        ESP_LOGE(TAG, "Failed to download lyrics after %d attempts", max_retries);
+        ESP_LOGE(TAG, "Failed to request after %d attempts", max_retries);
         return false;
     }
 
     // 记录前几个字节的数据，帮助调试
-    if (!lyric_content.empty())
+    if (!response.empty())
     {
-        size_t preview_size = std::min(lyric_content.size(), size_t(50));
-        std::string preview = lyric_content.substr(0, preview_size);
-        ESP_LOGD(TAG, "Lyric content preview (%d bytes): %s", lyric_content.length(), preview.c_str());
+        size_t preview_size = std::min(response.size(), size_t(50));
+        std::string preview = response.substr(0, preview_size);
+        ESP_LOGD(TAG, "request content preview (%d bytes): %s", response.length(), preview.c_str());
     }
     else
     {
-        ESP_LOGE(TAG, "Failed to download lyrics or lyrics are empty");
+        ESP_LOGE(TAG, "Failed to read any data from URL: %s", current_url.c_str());
         return false;
     }
 
-    if (lyric_content.length() < 256)
+    if (response.length() < 256)
     {
-        ESP_LOGE(TAG, "Lyric content is too short, size: %d bytes, content: %s", lyric_content.length(), lyric_content.c_str());
+        ESP_LOGE(TAG, "request content is too short, size: %d bytes, content: %s", response.length(), response.c_str());
         return false;
     }
-    ESP_LOGI(TAG, "Lyrics downloaded successfully, size: %d bytes", lyric_content.length());
+    ESP_LOGI(TAG, "request completed successfully, size: %d bytes", response.length());
     return true;
 }
 
@@ -1408,58 +1429,105 @@ bool Esp32Music::ParseLyrics(const std::string &lyric_content)
     return true;
 }
 
-bool Esp32Music::ParseRecommondSong(const std::string &lyric_content)
+bool Esp32Music::ParseRecommondSong(const std::string &keyword, const std::string &songId)
 {
-    // 解析响应JSON以提取音频URL
-    cJSON *rsp = cJSON_Parse(lyric_content.c_str());
+    {
+        std::lock_guard<std::mutex> lock(next_mutex_);
+        song_played_map_.clear();
+    }
+    std::string url = "https://search.kuwo.cn/r.s?pn=0&rn=10&all=" + url_encode(keyword) + "&ft=playlist&rformat=json&encoding=utf8&pcjson=1";
+    std::string rsp1;
+    if (!Request(url, rsp1))
+    {
+        ESP_LOGE(TAG, "Failed to request recommond song, keyword: [%s]", keyword.c_str());
+        return false;
+    }
+
+    cJSON *rsp = cJSON_Parse(rsp1.c_str());
     if (!rsp)
     {
         ESP_LOGE(TAG, "Failed to parse JSON response");
         return false;
     }
 
-    // 获取"data"对象
-    cJSON *data = cJSON_GetObjectItem(rsp, "data");
-    if (!cJSON_IsObject(data))
+    cJSON *abslist = cJSON_GetObjectItem(rsp, "abslist");
+    if(!cJSON_IsArray(abslist) || cJSON_GetArraySize(abslist) == 0)
     {
-        ESP_LOGE(TAG, "Invalid JSON structure - 'data' object not found");
+        ESP_LOGE(TAG, "Cannot get 'abslist' from JSON!");
         cJSON_Delete(rsp);
         return false;
     }
-
-    // 获取"simpl"对象
-    cJSON *simpl = cJSON_GetObjectItem(data, "simpl");
-    if (!cJSON_IsObject(simpl))
+   
+    int maxSongNum = 0;
+    std::string markPlayListId;
+    for (int i = 0; i < cJSON_GetArraySize(abslist); i++)
     {
-        ESP_LOGE(TAG, "Invalid JSON structure - 'simpl' object not found");
-        cJSON_Delete(rsp);
-        return false;
-    }
-
-    // 获取"musiclist"数组
-    cJSON *musiclist = cJSON_GetObjectItem(simpl, "musiclist");
-    if (!cJSON_IsArray(musiclist) || cJSON_GetArraySize(musiclist) == 0)
-    {
-        ESP_LOGE(TAG, "can not get musiclist from json!");
-        cJSON_Delete(rsp);
-        return false;
-    }
-
-    for (int i = 0; i < cJSON_GetArraySize(musiclist); i++)
-    {
-        cJSON *lyric = cJSON_GetArrayItem(musiclist, i);
-        cJSON *musicrId = cJSON_GetObjectItem(lyric, "musicrId");
-        if (!musicrId || !musicrId->valuestring)
+        cJSON *list = cJSON_GetArrayItem(abslist, i);
+        cJSON *songnum = cJSON_GetObjectItem(list, "songnum");
+        if (!songnum || !songnum->valuestring)
         {
-            ESP_LOGE(TAG, "Invalid JSON structure - 'musicrId' value not found");
+            ESP_LOGE(TAG, "Invalid JSON structure - 'songnum' object not found");
             continue;
         }
-        std::string songId = std::string(musicrId->valuestring);
-        if(song_played_map_.find(songId) == song_played_map_.end())
+        cJSON *playlistid = cJSON_GetObjectItem(list, "playlistid");
+        if (!playlistid || !playlistid->valuestring)
         {
-            song_played_map_[songId] = false;
+            ESP_LOGE(TAG, "Invalid JSON structure - 'playlistid' object not found");
+            continue;
         }
-    }   
+        int songNum = atoi(songnum->valuestring);
+        if (songNum > maxSongNum)
+        {
+            maxSongNum = songNum;
+            markPlayListId = std::string(playlistid->valuestring);
+        }
+    }
+    cJSON_Delete(rsp);
+    if (0 == maxSongNum)
+    {
+        ESP_LOGE(TAG, "Cannot find recommond song, keyword: [%s]", keyword.c_str());
+        return false;
+    }
+
+    std::string rsp2;
+    url = "http://nplserver.kuwo.cn/pl.svc?op=getlistinfo&pid=" + markPlayListId + "&pn=0&rn=100&encode=utf8&keyset=pl2012&vipver=MUSIC_9.1.1.2_BCS2&newver=1";
+    if (!Request(url, rsp2))
+    {
+        ESP_LOGE(TAG, "Failed to request playlist, keyword: [%s]", keyword.c_str());
+        return false;
+    }
+
+    rsp = cJSON_Parse(rsp2.c_str());
+    if (!rsp)
+    {
+        ESP_LOGE(TAG, "Failed to parse JSON response");
+        return false;
+    }
+
+    cJSON *musiclist = cJSON_GetObjectItem(rsp, "musiclist");
+    if (!cJSON_IsArray(musiclist) || cJSON_GetArraySize(musiclist) == 0)
+    {
+        ESP_LOGE(TAG, "Cannot get 'musiclist' from JSON!");
+        cJSON_Delete(rsp);
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(next_mutex_);
+        for (int i = 0; i < cJSON_GetArraySize(musiclist); i++)
+        {
+            cJSON *list = cJSON_GetArrayItem(musiclist, i);
+            cJSON *musicrId = cJSON_GetObjectItem(list, "id");
+            if (!musicrId || !musicrId->valuestring)
+            {
+                ESP_LOGE(TAG, "Invalid JSON structure - 'id' object not found");
+                continue;
+            }
+            std::string id = std::string(musicrId->valuestring);
+            song_played_map_[id] = false;
+        }
+        song_played_map_[songId] = true;
+    }
     cJSON_Delete(rsp);
     return true;
 }
@@ -1468,47 +1536,12 @@ bool Esp32Music::ParseRecommondSong(const std::string &lyric_content)
 void Esp32Music::LyricDisplayThread()
 {
     ESP_LOGI(TAG, "Lyric display thread started");
-
-    bool is_downloadLricsOk = false;
     std::string lyric_content;
-    for (int i = 0; i < 5; i++)
+    if (!Request(current_lyric_url_, lyric_content))
     {
-        if (DownloadLyrics(current_lyric_url_, lyric_content))
-        {
-            is_downloadLricsOk = true;
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        ESP_LOGE(TAG, "Failed to download lrics");
     }
-
-    if (!is_downloadLricsOk)
-    {
-        ESP_LOGE(TAG, "Failed to download lrics after 5 attempts");
-    }
-
-    ParseRecommondSong(lyric_content);
     ParseLyrics(lyric_content);
-
-    bool next_song_found = false;
-    for(const auto& elem : song_played_map_)
-    {
-        if(elem.second == false)
-        {
-            play_next_ = elem.first;
-            break;
-        }
-    }
-
-    if (next_song_found)
-    {
-        ESP_LOGI(TAG, "LyricDisplayThread: play next song: %s", play_next_.c_str());
-    }
-
-    //打印song_played_map_
-    for(const auto& elem : song_played_map_)
-    {
-        ESP_LOGI(TAG, "song_played_map_ key: %s, value: %d", elem.first.c_str(), elem.second);
-    }
     ESP_LOGI(TAG, "Lyric display thread finished");
 }
 

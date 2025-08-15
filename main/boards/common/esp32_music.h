@@ -77,9 +77,9 @@ private:
     void PlayNextDetect();
 
     // 歌词相关私有方法
-    bool DownloadLyrics(const std::string &lyric_url, std::string &lyric_content);
+    bool Request(const std::string &url, std::string &response);
     bool ParseLyrics(const std::string& lyric_content);
-    bool ParseRecommondSong(const std::string& lyric_content);
+    bool ParseRecommondSong(const std::string &keyword, const std::string &songId);
     void LyricDisplayThread();
     void UpdateLyricDisplay(int64_t current_time_ms);
     
